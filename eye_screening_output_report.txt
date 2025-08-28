@@ -1,0 +1,29 @@
+Report time: 2025-08-28T02:32:29.271334Z
+Image: small.jpg
+Notes: Prototype eye-screening from single image. NOT a diagnosis. Ensure frontal pose, no glasses (if possible), good light.
+
+- Scleral redness (conjunctivitis/irritation proxy)
+  Present: False
+  Confidence: 0.00
+  Reasoning: Redness index L=0.44, R=0.45. Threshold ~0.63.
+
+- Ptosis (eyelid droop proxy via aperture)
+  Present: False
+  Confidence: 0.00
+  Reasoning: Aperture L=0.49, R=0.48, asymmetry=0.01. Angle/pose can confound.
+
+- Strabismus screening (gaze asymmetry)
+  Present: True
+  Confidence: 1.00
+  Reasoning: Gaze angle diff ≈ 31.1°. Requires frontal, well-lit image.
+
+- Anisocoria (pupil size difference)
+  Present: False
+  Confidence: 0.00
+  Reasoning: Relative radius difference ≈ 1.9%.
+
+- Leukocoria (white pupillary reflex) – cancer risk flag
+  Present: False
+  Confidence: 0.00
+  Reasoning: Bright pupil intensity ≈ 89.4/255; ONLY a rough flag—seek urgent clinical exam if seen repeatedly.
+

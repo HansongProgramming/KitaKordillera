@@ -1,0 +1,37 @@
+{
+  "timestamp": "2025-08-28T02:32:29.271334Z",
+  "image_path": "small.jpg",
+  "notes": "Prototype eye-screening from single image. NOT a diagnosis. Ensure frontal pose, no glasses (if possible), good light.",
+  "findings": [
+    {
+      "name": "Scleral redness (conjunctivitis/irritation proxy)",
+      "present": false,
+      "confidence": 0.0,
+      "reasoning": "Redness index L=0.44, R=0.45. Threshold ~0.63."
+    },
+    {
+      "name": "Ptosis (eyelid droop proxy via aperture)",
+      "present": false,
+      "confidence": 0.0,
+      "reasoning": "Aperture L=0.49, R=0.48, asymmetry=0.01. Angle/pose can confound."
+    },
+    {
+      "name": "Strabismus screening (gaze asymmetry)",
+      "present": true,
+      "confidence": 1.0,
+      "reasoning": "Gaze angle diff \u2248 31.1\u00b0. Requires frontal, well-lit image."
+    },
+    {
+      "name": "Anisocoria (pupil size difference)",
+      "present": false,
+      "confidence": 0.0,
+      "reasoning": "Relative radius difference \u2248 1.9%."
+    },
+    {
+      "name": "Leukocoria (white pupillary reflex) \u2013 cancer risk flag",
+      "present": false,
+      "confidence": 0.0,
+      "reasoning": "Bright pupil intensity \u2248 89.4/255; ONLY a rough flag\u2014seek urgent clinical exam if seen repeatedly."
+    }
+  ]
+}
