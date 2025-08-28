@@ -1,4 +1,4 @@
-Report time: 2025-08-28T02:57:34.472188Z
+Report time: 2025-08-28T03:47:30.196117Z
 Image: redeye.jpg
 Notes: Prototype eye-screening from single image. NOT a diagnosis. Ensure frontal pose, no glasses (if possible), good light.
 

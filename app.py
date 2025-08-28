@@ -319,10 +319,88 @@ def run_on_image(image_path, out_prefix):
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
         res = fm.process(img_rgb)
         if not res.multi_face_landmarks:
-            debug_path = f"{out_prefix}_debug.jpg"
-            cv2.imwrite(debug_path, img_bgr)
-            print(f"No face landmarks detected.\n- Image size: {w}x{h} pixels\n- Saved debug copy: {debug_path}\n- Tips: Use a sharp, frontal, well-lit image. Avoid sunglasses, masks, or extreme angles.")
-            raise SystemExit("Face detection failed. See above for details.")
+            print("FaceMesh failed. Trying OpenCV Haar eye detector fallback...")
+            eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
+            gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+            eyes = eye_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+            if len(eyes) < 2:
+                debug_path = f"{out_prefix}_debug.jpg"
+                cv2.imwrite(debug_path, img_bgr)
+                print(f"No face or eyes detected.\n- Saved debug copy: {debug_path}\n- Tips: Use a sharp, frontal, well-lit image. Avoid sunglasses, masks, or extreme angles.")
+                raise SystemExit("Detection failed. See above for details.")
+            # Take the two largest detected eyes
+            eyes = sorted(eyes, key=lambda e: e[2]*e[3], reverse=True)[:2]
+            metrics = {}
+            geometry = {}
+            for idx, (ex, ey, ew, eh) in enumerate(eyes):
+                eye_roi = img_bgr[ey:ey+eh, ex:ex+ew]
+                center = (ex + ew//2, ey + eh//2)
+                r = min(ew, eh)//2
+                pupil_r = 0.0
+                # Use same pupil detection as before
+                def detect_pupil_radius_eye(roi, r):
+                    if roi.size == 0:
+                        return 0.0
+                    gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+                    mask = np.zeros_like(gray_roi)
+                    cv2.circle(mask, (roi.shape[1]//2, roi.shape[0]//2), r, 255, -1)
+                    _, thresh = cv2.threshold(gray_roi, 50, 255, cv2.THRESH_BINARY_INV)
+                    thresh = cv2.bitwise_and(thresh, mask)
+                    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                    pupil_r = 0.0
+                    for cnt in contours:
+                        (_, _), pr = cv2.minEnclosingCircle(cnt)
+                        if pr > pupil_r:
+                            pupil_r = pr
+                    return float(pupil_r)
+                pupil_r = detect_pupil_radius_eye(eye_roi, int(r*0.6))
+                metrics[f"eye{idx}_pupil_radius_px"] = pupil_r
+                geometry[f"eye{idx}_center"] = center
+                geometry[f"eye{idx}_r"] = int(r)
+            # Calculate anisocoria
+            left_pupil_r = metrics.get("eye0_pupil_radius_px", 0.0)
+            right_pupil_r = metrics.get("eye1_pupil_radius_px", 0.0)
+            metrics["anisocoria_ratio"] = float(abs(left_pupil_r - right_pupil_r) / max(left_pupil_r, right_pupil_r) if left_pupil_r > 0 and right_pupil_r > 0 else 0.0)
+            print(f"Fallback detected left pupil radius: {left_pupil_r:.2f}, right pupil radius: {right_pupil_r:.2f}")
+            # Draw fallback annotations
+            annotated = img_bgr.copy()
+            for idx in range(2):
+                center = geometry.get(f"eye{idx}_center")
+                r = geometry.get(f"eye{idx}_r")
+                pupil_r = int(metrics.get(f"eye{idx}_pupil_radius_px", 0))
+                if center and r > 0:
+                    cv2.circle(annotated, center, r, (255,0,0), 1, cv2.LINE_AA)  # iris proxy
+                if center and pupil_r > 0:
+                    cv2.circle(annotated, center, pupil_r, (255,255,255), 2, cv2.LINE_AA)  # pupil
+            annotated_path = f"{out_prefix}_annotated.jpg"
+            cv2.imwrite(annotated_path, annotated)
+            print(f"Fallback annotated image saved: {annotated_path}")
+            # Minimal findings for fallback
+            findings = []
+            anis = metrics["anisocoria_ratio"]
+            ani_present = anis > 0.20
+            findings.append(Finding(
+                name="Anisocoria (pupil size difference)",
+                present=bool(ani_present),
+                confidence=float(min(max((anis-0.10)/0.30, 0), 1)),
+                reasoning=f"Relative radius difference ≈ {anis*100:.1f}% (fallback)."
+            ))
+            # Save minimal report
+            rep = Report(
+                timestamp=datetime.datetime.utcnow().isoformat() + "Z",
+                image_path=image_path,
+                notes="Fallback: Only eyes detected. Prototype eye-screening from cropped eye image.",
+                findings=[asdict(f) for f in findings]
+            )
+            json_path = f"{out_prefix}_report.json"
+            txt_path = f"{out_prefix}_report.txt"
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(asdict(rep), f, indent=2)
+            with open(txt_path, "w", encoding="utf-8") as f:
+                f.write(f"Report time: {rep.timestamp}\nImage: {rep.image_path}\nNotes: {rep.notes}\n\n")
+                for fnd in findings:
+                    f.write(f"- {fnd.name}\n  Present: {fnd.present}\n  Confidence: {fnd.confidence:.2f}\n  Reasoning: {fnd.reasoning}\n\n")
+            return metrics, geometry
 
         lms = res.multi_face_landmarks[0].landmark
         metrics, geometry = extract_eye_metrics(img_bgr, lms)
