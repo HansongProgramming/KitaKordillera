@@ -148,6 +148,37 @@ def extract_eye_metrics(img_bgr, landmarks):
         cv2.circle(pupil_mask, (int(rcx), int(rcy)), int(rr*0.6), 255, -1)
         leuk_right = mean_intensity(gray, pupil_mask)
 
+    # --- Pupil detection inside annotated white circle ---
+    def detect_pupil_radius(img_bgr, center, radius):
+        if center is None or radius <= 0:
+            return 0.0
+        x, y, r = int(center[0]), int(center[1]), int(radius)
+        # Crop a square region around the circle
+        pad = int(r * 1.1)
+        x1, y1 = max(x - pad, 0), max(y - pad, 0)
+        x2, y2 = min(x + pad, w), min(y + pad, h)
+        roi = img_bgr[y1:y2, x1:x2]
+        if roi.size == 0:
+            return 0.0
+        gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        # Mask for the white circle
+        mask = np.zeros_like(gray_roi)
+        cv2.circle(mask, (pad, pad), r, 255, -1)
+        # Threshold to find dark pupil
+        _, thresh = cv2.threshold(gray_roi, 50, 255, cv2.THRESH_BINARY_INV)
+        thresh = cv2.bitwise_and(thresh, mask)
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        pupil_r = 0.0
+        for cnt in contours:
+            (cx, cy), pr = cv2.minEnclosingCircle(cnt)
+            if pr > pupil_r:
+                pupil_r = pr
+        return float(pupil_r)
+
+    left_pupil_r = detect_pupil_radius(img_bgr, (lcx, lcy), lr*0.6)
+    right_pupil_r = detect_pupil_radius(img_bgr, (rcx, rcy), rr*0.6)
+    print(f"Detected left pupil radius: {left_pupil_r:.2f}, right pupil radius: {right_pupil_r:.2f}")
+
     # Compile metrics
     metrics = {
         "left_redness": float(left_red),
@@ -156,11 +187,13 @@ def extract_eye_metrics(img_bgr, landmarks):
         "right_aperture": float(right_ap),
         "gaze_left": [float(gv_left[0]), float(gv_left[1])],
         "gaze_right": [float(gv_right[0]), float(gv_right[1])],
-        "anisocoria_ratio": float(anis_ratio),
+        "anisocoria_ratio": float(abs(left_pupil_r - right_pupil_r) / max(left_pupil_r, right_pupil_r) if left_pupil_r > 0 and right_pupil_r > 0 else 0.0),
         "leukocoria_left_brightness": float(leuk_left),
         "leukocoria_right_brightness": float(leuk_right),
         "left_iris_radius_px": float(lr if lr else 0.0),
         "right_iris_radius_px": float(rr if rr else 0.0),
+        "left_pupil_radius_px": float(left_pupil_r),
+        "right_pupil_radius_px": float(right_pupil_r),
     }
     # Also return polygon points for drawing
     geometry = {
@@ -170,6 +203,10 @@ def extract_eye_metrics(img_bgr, landmarks):
         "right_iris_center": (int(right_center[0]), int(right_center[1])) if right_center else None,
         "left_iris_r": int(lr) if lr else 0,
         "right_iris_r": int(rr) if rr else 0,
+        "left_pupil_center": (int(lcx), int(lcy)) if lcx and lcy else None,
+        "right_pupil_center": (int(rcx), int(rcy)) if rcx and rcy else None,
+        "left_pupil_r": int(left_pupil_r),
+        "right_pupil_r": int(right_pupil_r),
     }
     return metrics, geometry
 
@@ -249,10 +286,13 @@ def draw_annotations(img_bgr, geometry, metrics, findings):
     # Draw iris circles
     if geometry["left_iris_center"] and geometry["left_iris_r"] > 0:
         cv2.circle(out, geometry["left_iris_center"], geometry["left_iris_r"], (255,0,0), 1, cv2.LINE_AA)
-        cv2.circle(out, geometry["left_iris_center"], max(1, int(geometry["left_iris_r"]*0.6)), (255,255,255), 1, cv2.LINE_AA)
     if geometry["right_iris_center"] and geometry["right_iris_r"] > 0:
         cv2.circle(out, geometry["right_iris_center"], geometry["right_iris_r"], (255,0,0), 1, cv2.LINE_AA)
-        cv2.circle(out, geometry["right_iris_center"], max(1, int(geometry["right_iris_r"]*0.6)), (255,255,255), 1, cv2.LINE_AA)
+    # Draw pupil circles (white)
+    if geometry["left_pupil_center"] and geometry["left_pupil_r"] > 0:
+        cv2.circle(out, geometry["left_pupil_center"], geometry["left_pupil_r"], (255,255,255), 2, cv2.LINE_AA)
+    if geometry["right_pupil_center"] and geometry["right_pupil_r"] > 0:
+        cv2.circle(out, geometry["right_pupil_center"], geometry["right_pupil_r"], (255,255,255), 2, cv2.LINE_AA)
     # Overlay findings text
     y = 20
     for f in findings:
